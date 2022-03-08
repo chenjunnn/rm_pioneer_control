@@ -3,6 +3,8 @@
 
 #include "rm_pioneer_hardware/rm_serial_driver.hpp"
 
+#include <rcl/visibility_control.h>
+
 // ROS
 #include <rclcpp/logger.hpp>
 #include <rclcpp/logging.hpp>
@@ -25,11 +27,11 @@
 namespace rm_pioneer_hardware
 {
 RMSerialDriver::RMSerialDriver(const std::unordered_map<std::string, std::string> & params)
-: owned_ctx_{new IoContext(2)},
-  serial_driver_{new drivers::serial_driver::SerialDriver(*owned_ctx_)},
-  logger_(rclcpp::get_logger("SerialPort"))
+: Node("SerialDriver"),
+  owned_ctx_{new IoContext(2)},
+  serial_driver_{new drivers::serial_driver::SerialDriver(*owned_ctx_)}
 {
-  RCLCPP_INFO(logger_, "Start RMSerialDriver!");
+  RCLCPP_INFO(get_logger(), "Start RMSerialDriver!");
 
   resolveParams(params);
 
@@ -37,60 +39,70 @@ RMSerialDriver::RMSerialDriver(const std::unordered_map<std::string, std::string
     serial_driver_->init_port(device_name_, *device_config_);
     if (!serial_driver_->port()->is_open()) {
       serial_driver_->port()->open();
-      receive_thread_ = std::thread(&RMSerialDriver::receiveData, this);
     }
   } catch (const std::exception & ex) {
-    RCLCPP_ERROR(logger_, "Error creating serial port: %s - %s", device_name_.c_str(), ex.what());
+    RCLCPP_ERROR(
+      get_logger(), "Error creating serial port: %s - %s", device_name_.c_str(), ex.what());
     throw ex;
   }
 }
 
 RMSerialDriver::~RMSerialDriver()
 {
-  if (receive_thread_.joinable()) {
-    receive_thread_.join();
-    serial_driver_->port()->close();
-  }
+  serial_driver_->port()->close();
 
   if (owned_ctx_) {
     owned_ctx_->waitForExit();
   }
 }
 
-// void RMSerialDriver::receiveData()
-// {
-//   while (rclcpp::ok()) {
-//     try {
-//       std::vector<uint8_t> header(1);
-//       serial_driver_->port()->receive(header);
+void RMSerialDriver::sendRequest()
+{
+  SendPacket packet;
+  packet.is_request = true;
+  crc16::appendCRC16CheckSum(reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
 
-//       if (header[0] == 0x5A) {
-//         std::vector<uint8_t> data(sizeof(ReceivePacket) - 1);
-//         serial_driver_->port()->receive(data);
+  auto data = toVector(packet);
 
-//         ReceivePacket packet = fromVector(data);
-//         bool crc_ok =
-// crc16::Verify_CRC16_Check_Sum(reinterpret_cast<const uint8_t *>(&packet), sizeof(packet));
-//         if (crc_ok) {
-//           sensor_msgs::msg::JointState joint_state;
-//           joint_state.header.stamp = this->now();
-//           joint_state.name.push_back("pitch_joint");
-//           joint_state.name.push_back("yaw_joint");
-//           joint_state.position.push_back(packet.pitch);
-//           joint_state.position.push_back(packet.yaw);
-//           joint_state_pub_->publish(joint_state);
-//         } else {
-//           RCLCPP_ERROR(logger_, "CRC error!");
-//         }
-//       } else {
-//         RCLCPP_WARN(logger_, "Invalid header: %02X", header[0]);
-//       }
-//     } catch (const std::exception & ex) {
-//       RCLCPP_ERROR(logger_, "Error while receiving data: %s", ex.what());
-//       reopenPort();
-//     }
-//   }
-// }
+  try {
+    serial_driver_->port()->send(data);
+  } catch (const std::exception & ex) {
+    RCLCPP_ERROR(get_logger(), "Error sending data: %s - %s", device_name_.c_str(), ex.what());
+    reopenPort();
+  }
+}
+
+void RMSerialDriver::readData(std::array<double, 6> & imu_raw_data)
+{
+  try {
+    std::vector<uint8_t> header(1);
+    serial_driver_->port()->receive(header);
+
+    if (header[0] == 0x5A) {
+      std::vector<uint8_t> data(sizeof(ReceivePacket) - 1);
+      serial_driver_->port()->receive(data);
+
+      ReceivePacket packet = fromVector(data);
+      bool crc_ok =
+        crc16::verifyCRC16CheckSum(reinterpret_cast<const uint8_t *>(&packet), sizeof(packet));
+      if (crc_ok) {
+        imu_raw_data[0] = packet.linear_acceleration_x;
+        imu_raw_data[1] = packet.linear_acceleration_y;
+        imu_raw_data[2] = packet.linear_acceleration_z;
+        imu_raw_data[3] = packet.angular_velocity_x;
+        imu_raw_data[4] = packet.angular_velocity_y;
+        imu_raw_data[5] = packet.angular_velocity_z;
+      } else {
+        RCLCPP_ERROR(get_logger(), "CRC error!");
+      }
+    } else {
+      RCLCPP_WARN(get_logger(), "Invalid header: %02X", header[0]);
+    }
+  } catch (const std::exception & ex) {
+    RCLCPP_ERROR(get_logger(), "Error while receiving data: %s", ex.what());
+    reopenPort();
+  }
+}
 
 // void RMSerialDriver::sendData(const auto_aim_interfaces::msg::Target::SharedPtr msg)
 // {
@@ -109,7 +121,7 @@ RMSerialDriver::~RMSerialDriver()
 //   if (serial_driver_->port()->is_open()) {
 //     serial_driver_->port()->send(data);
 //   } else {
-//     RCLCPP_WARN(logger_, "Serial port is not open, ignore sending data!");
+//     RCLCPP_WARN(get_logger(), "Serial port is not open, ignore sending data!");
 //   }
 
 //   std_msgs::msg::Float64 latency;
@@ -131,14 +143,14 @@ void RMSerialDriver::resolveParams(const std::unordered_map<std::string, std::st
   try {
     device_name_ = params.at("device_name");
   } catch (rclcpp::ParameterTypeException & ex) {
-    RCLCPP_ERROR(logger_, "The device name provided was invalid");
+    RCLCPP_ERROR(get_logger(), "The device name provided was invalid");
     throw ex;
   }
 
   try {
     baud_rate = std::stoi(params.at("baud_rate"));
   } catch (rclcpp::ParameterTypeException & ex) {
-    RCLCPP_ERROR(logger_, "The baud_rate provided was invalid");
+    RCLCPP_ERROR(get_logger(), "The baud_rate provided was invalid");
     throw ex;
   }
 
@@ -156,7 +168,7 @@ void RMSerialDriver::resolveParams(const std::unordered_map<std::string, std::st
         "The flow_control parameter must be one of: none, software, or hardware."};
     }
   } catch (rclcpp::ParameterTypeException & ex) {
-    RCLCPP_ERROR(logger_, "The flow_control provided was invalid");
+    RCLCPP_ERROR(get_logger(), "The flow_control provided was invalid");
     throw ex;
   }
 
@@ -173,7 +185,7 @@ void RMSerialDriver::resolveParams(const std::unordered_map<std::string, std::st
       throw std::invalid_argument{"The parity parameter must be one of: none, odd, or even."};
     }
   } catch (rclcpp::ParameterTypeException & ex) {
-    RCLCPP_ERROR(logger_, "The parity provided was invalid");
+    RCLCPP_ERROR(get_logger(), "The parity provided was invalid");
     throw ex;
   }
 
@@ -190,7 +202,7 @@ void RMSerialDriver::resolveParams(const std::unordered_map<std::string, std::st
       throw std::invalid_argument{"The stop_bits parameter must be one of: 1, 1.5, or 2."};
     }
   } catch (rclcpp::ParameterTypeException & ex) {
-    RCLCPP_ERROR(logger_, "The stop_bits provided was invalid");
+    RCLCPP_ERROR(get_logger(), "The stop_bits provided was invalid");
     throw ex;
   }
 
@@ -200,15 +212,15 @@ void RMSerialDriver::resolveParams(const std::unordered_map<std::string, std::st
 
 void RMSerialDriver::reopenPort()
 {
-  RCLCPP_WARN(logger_, "Attempting to reopen port");
+  RCLCPP_WARN(get_logger(), "Attempting to reopen port");
   try {
     if (serial_driver_->port()->is_open()) {
       serial_driver_->port()->close();
     }
     serial_driver_->port()->open();
-    RCLCPP_INFO(logger_, "Successfully reopened port");
+    RCLCPP_INFO(get_logger(), "Successfully reopened port");
   } catch (const std::exception & ex) {
-    RCLCPP_ERROR(logger_, "Error while reopening port: %s", ex.what());
+    RCLCPP_ERROR(get_logger(), "Error while reopening port: %s", ex.what());
     rclcpp::sleep_for(std::chrono::seconds(1));
     reopenPort();
   }

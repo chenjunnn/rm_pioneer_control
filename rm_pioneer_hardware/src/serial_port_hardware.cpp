@@ -3,7 +3,13 @@
 
 #include "rm_pioneer_hardware/serial_port_hardware.hpp"
 
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Quaternion.h>
+
+#include <array>
 #include <limits>
+#include <memory>
+#include <rclcpp/clock.hpp>
 #include <vector>
 
 #include "hardware_interface/system_interface.hpp"
@@ -19,10 +25,15 @@ CallbackReturn SerialPortHardware::on_init(const hardware_interface::HardwareInf
     return CallbackReturn::ERROR;
   }
 
+  serial_driver_ = std::make_unique<RMSerialDriver>(info.hardware_parameters);
+
+  filter_.setDoBiasEstimation(true);
+  filter_.setDoAdaptiveGain(true);
+  filter_.setGainAcc(0.01);
+  filter_.setBiasAlpha(0.01);
+
   hw_joint_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_joint_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_sensor_states_.resize(
-    info_.sensors[0].state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
 
   for (const hardware_interface::ComponentInfo & joint : info_.joints) {
     if (joint.command_interfaces.size() != 1) {
@@ -81,12 +92,6 @@ std::vector<hardware_interface::StateInterface> SerialPortHardware::export_state
       info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_joint_states_[i]));
   }
 
-  // export sensor state interface
-  for (uint i = 0; i < info_.sensors[0].state_interfaces.size(); i++) {
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.sensors[0].name, info_.sensors[0].state_interfaces[i].name, &hw_sensor_states_[i]));
-  }
-
   return state_interfaces;
 }
 
@@ -108,11 +113,6 @@ CallbackReturn SerialPortHardware::on_activate(const rclcpp_lifecycle::State & /
     hw_joint_states_[i] = hw_joint_states_[i];
   }
 
-  // set default value for sensor
-  if (std::isnan(hw_sensor_states_[0])) {
-    hw_sensor_states_[0] = 0;
-  }
-
   RCLCPP_INFO(rclcpp::get_logger("SerialPortHardware"), "Successfully activated!");
 
   return CallbackReturn::SUCCESS;
@@ -124,6 +124,38 @@ CallbackReturn SerialPortHardware::on_deactivate(const rclcpp_lifecycle::State &
 
 hardware_interface::return_type SerialPortHardware::read()
 {
+  // Read imu raw data
+  serial_driver_->sendRequest();
+  std::array<double, 6> imu_raw;
+  serial_driver_->readData(imu_raw);
+  auto time = serial_driver_->getTime();
+
+  // Initialize
+  if (!initialized_filter_) {
+    time_prev_ = time;
+    initialized_filter_ = true;
+    return hardware_interface::return_type::OK;
+  }
+
+  // Update the filter
+  double dt = (time - time_prev_).seconds();
+  filter_.update(imu_raw[0], imu_raw[1], imu_raw[2], imu_raw[3], imu_raw[4], imu_raw[5], dt);
+
+  // Get the orientation:
+  double q0, q1, q2, q3;
+  filter_.getOrientation(q0, q1, q2, q3);
+  auto q = tf2::Quaternion(q1, q2, q3, q0);
+
+  // Transform to RPY
+  double rpy[3];
+  tf2::Matrix3x3 M;
+  M.setRotation(q);
+  M.getRPY(rpy[0], rpy[1], rpy[2]);
+
+  // Update the state
+  hw_joint_states_[0] = rpy[1];  // Pitch
+  hw_joint_states_[1] = rpy[2];  // Yaw
+
   return hardware_interface::return_type::OK;
 }
 
