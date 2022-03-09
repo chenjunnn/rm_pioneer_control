@@ -1,8 +1,8 @@
 // Copyright (c) 2022 ChenJun
 // Licensed under the MIT License.
 
-#ifndef RM_PIONEER_HARDWARE__CRC_HPP_
-#define RM_PIONEER_HARDWARE__CRC_HPP_
+#ifndef RM_SERIAL_DRIVER__CRC_HPP_
+#define RM_SERIAL_DRIVER__CRC_HPP_
 
 #include <cstdint>
 
@@ -93,4 +93,4 @@ inline void appendCRC16CheckSum(uint8_t * pchMessage, uint32_t dwLength)
 
 }  // namespace crc16
 
-#endif  // RM_PIONEER_HARDWARE__CRC_HPP_
+#endif  // RM_SERIAL_DRIVER__CRC_HPP_

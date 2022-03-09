@@ -28,7 +28,7 @@
 	(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 	SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#include "rm_pioneer_hardware/complementary_filter.hpp"
+#include "imu_tools/complementary_filter.hpp"
 
 #include <cmath>
 #include <cstdio>

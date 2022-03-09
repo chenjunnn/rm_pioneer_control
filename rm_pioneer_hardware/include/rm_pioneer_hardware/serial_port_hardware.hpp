@@ -4,14 +4,14 @@
 #ifndef RM_PIONEER_HARDWARE__SERIAL_PORT_HARDWARE_HPP_
 #define RM_PIONEER_HARDWARE__SERIAL_PORT_HARDWARE_HPP_
 
+#include <chrono>
 #include <memory>
-#include <rclcpp/node.hpp>
 #include <vector>
 
 #include "hardware_interface/system_interface.hpp"
+#include "imu_tools/complementary_filter.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
-#include "rm_pioneer_hardware/complementary_filter.hpp"
-#include "rm_pioneer_hardware/rm_serial_driver.hpp"
+#include "rm_serial_driver/rm_serial_driver.hpp"
 
 namespace rm_pioneer_hardware
 {
@@ -38,11 +38,12 @@ private:
   std::unique_ptr<RMSerialDriver> serial_driver_;
 
   imu_tools::ComplementaryFilter filter_;
-  rclcpp::Time time_prev_;
+  std::chrono::steady_clock::time_point time_prev_;
   bool initialized_filter_;
 
   std::vector<double> hw_joint_commands_;
   std::vector<double> hw_joint_states_;
+  std::vector<double> hw_sensor_states_;
 };
 }  // namespace rm_pioneer_hardware
 

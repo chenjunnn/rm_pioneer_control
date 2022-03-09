@@ -3,13 +3,12 @@
 
 #include "rm_pioneer_hardware/serial_port_hardware.hpp"
 
-#include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 
 #include <array>
+#include <chrono>
 #include <limits>
 #include <memory>
-#include <rclcpp/clock.hpp>
 #include <vector>
 
 #include "hardware_interface/system_interface.hpp"
@@ -34,6 +33,8 @@ CallbackReturn SerialPortHardware::on_init(const hardware_interface::HardwareInf
 
   hw_joint_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_joint_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+  hw_sensor_states_.resize(
+    info_.sensors[0].state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
 
   for (const hardware_interface::ComponentInfo & joint : info_.joints) {
     if (joint.command_interfaces.size() != 1) {
@@ -92,6 +93,12 @@ std::vector<hardware_interface::StateInterface> SerialPortHardware::export_state
       info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_joint_states_[i]));
   }
 
+  // export sensor state interface
+  for (uint i = 0; i < info_.sensors[0].state_interfaces.size(); i++) {
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+      info_.sensors[0].name, info_.sensors[0].state_interfaces[i].name, &hw_sensor_states_[i]));
+  }
+
   return state_interfaces;
 }
 
@@ -113,6 +120,11 @@ CallbackReturn SerialPortHardware::on_activate(const rclcpp_lifecycle::State & /
     hw_joint_states_[i] = hw_joint_states_[i];
   }
 
+  // set default value for sensor
+  if (std::isnan(hw_sensor_states_[0])) {
+    hw_sensor_states_[0] = 0;
+  }
+
   RCLCPP_INFO(rclcpp::get_logger("SerialPortHardware"), "Successfully activated!");
 
   return CallbackReturn::SUCCESS;
@@ -128,7 +140,7 @@ hardware_interface::return_type SerialPortHardware::read()
   serial_driver_->sendRequest();
   std::array<double, 6> imu_raw;
   serial_driver_->readData(imu_raw);
-  auto time = serial_driver_->getTime();
+  auto time = std::chrono::steady_clock::now();
 
   // Initialize
   if (!initialized_filter_) {
@@ -138,7 +150,7 @@ hardware_interface::return_type SerialPortHardware::read()
   }
 
   // Update the filter
-  double dt = (time - time_prev_).seconds();
+  double dt = std::chrono::duration_cast<std::chrono::nanoseconds>(time - time_prev_).count() / 1e9;
   filter_.update(imu_raw[0], imu_raw[1], imu_raw[2], imu_raw[3], imu_raw[4], imu_raw[5], dt);
 
   // Get the orientation:
@@ -146,15 +158,26 @@ hardware_interface::return_type SerialPortHardware::read()
   filter_.getOrientation(q0, q1, q2, q3);
   auto q = tf2::Quaternion(q1, q2, q3, q0);
 
-  // Transform to RPY
-  double rpy[3];
-  tf2::Matrix3x3 M;
-  M.setRotation(q);
-  M.getRPY(rpy[0], rpy[1], rpy[2]);
+  // // Transform to RPY
+  // double rpy[3];
+  // tf2::Matrix3x3 M;
+  // M.setRotation(q);
+  // M.getRPY(rpy[0], rpy[1], rpy[2]);
 
   // Update the state
-  hw_joint_states_[0] = rpy[1];  // Pitch
-  hw_joint_states_[1] = rpy[2];  // Yaw
+  // Orientation
+  hw_sensor_states_[0] = q.x();
+  hw_sensor_states_[1] = q.y();
+  hw_sensor_states_[2] = q.z();
+  hw_sensor_states_[3] = q.w();
+  // Linear acceleration
+  hw_sensor_states_[4] = imu_raw[0];
+  hw_sensor_states_[5] = imu_raw[1];
+  hw_sensor_states_[6] = imu_raw[2];
+  // Angular velocity
+  hw_sensor_states_[7] = imu_raw[3];
+  hw_sensor_states_[8] = imu_raw[4];
+  hw_sensor_states_[9] = imu_raw[5];
 
   return hardware_interface::return_type::OK;
 }

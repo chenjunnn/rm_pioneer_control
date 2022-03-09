@@ -1,8 +1,8 @@
 // Copyright (c) 2022 ChenJun
 // Licensed under the MIT License.
 
-#ifndef RM_PIONEER_HARDWARE__PACKET_HPP_
-#define RM_PIONEER_HARDWARE__PACKET_HPP_
+#ifndef RM_SERIAL_DRIVER__PACKET_HPP_
+#define RM_SERIAL_DRIVER__PACKET_HPP_
 
 #include <algorithm>
 #include <cstdint>
@@ -54,4 +54,4 @@ inline std::vector<uint8_t> toVector(const SendPacket & data)
 
 }  // namespace rm_pioneer_hardware
 
-#endif  // RM_PIONEER_HARDWARE__PACKET_HPP_
+#endif  // RM_SERIAL_DRIVER__PACKET_HPP_

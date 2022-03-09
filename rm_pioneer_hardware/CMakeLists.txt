@@ -27,6 +27,8 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   DIRECTORY src
 )
 
+pluginlib_export_plugin_description_file(hardware_interface rm_pioneer_hardware.xml)
+
 #############
 ## Testing ##
 #############
@@ -41,7 +43,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   set(_linter_excludes
-    include/rm_pioneer_hardware/complementary_filter.hpp
+    include/imu_tools/complementary_filter.hpp
     src/complementary_filter.cpp
   )
   ament_cpplint(EXCLUDE ${_linter_excludes})

@@ -1,0 +1,9 @@
+<library path="rm_pioneer_hardware">
+  <class name="rm_pioneer_hardware/SerialPortHardware" 
+         type="rm_pioneer_hardware::SerialPortHardware" 
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+  Serial Port Hardware, transporting imu sensor data, and position control.
+    </description>
+  </class>
+</library>

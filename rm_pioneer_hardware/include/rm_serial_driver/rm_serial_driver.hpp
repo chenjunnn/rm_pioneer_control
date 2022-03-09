@@ -1,11 +1,10 @@
 // Copyright (c) 2022 ChenJun
 // Licensed under the MIT License.
 
-#ifndef RM_PIONEER_HARDWARE__RM_SERIAL_DRIVER_HPP_
-#define RM_PIONEER_HARDWARE__RM_SERIAL_DRIVER_HPP_
+#ifndef RM_SERIAL_DRIVER__RM_SERIAL_DRIVER_HPP_
+#define RM_SERIAL_DRIVER__RM_SERIAL_DRIVER_HPP_
 
 #include <rclcpp/logger.hpp>
-#include <rclcpp/node.hpp>
 #include <serial_driver/serial_driver.hpp>
 
 // C++ system
@@ -17,7 +16,7 @@
 
 namespace rm_pioneer_hardware
 {
-class RMSerialDriver : rclcpp::Node
+class RMSerialDriver
 {
 public:
   explicit RMSerialDriver(const std::unordered_map<std::string, std::string> & params);
@@ -29,12 +28,10 @@ public:
 
   void writeCommand();
 
-  inline rclcpp::Time getTime() const { return this->now(); }
-
 private:
   void resolveParams(const std::unordered_map<std::string, std::string> & params);
 
-  void reopenPort();
+  rclcpp::Logger logger_;
 
   std::unique_ptr<IoContext> owned_ctx_;
   std::string device_name_;
@@ -43,4 +40,4 @@ private:
 };
 }  // namespace rm_pioneer_hardware
 
-#endif  // RM_PIONEER_HARDWARE__RM_SERIAL_DRIVER_HPP_
+#endif  // RM_SERIAL_DRIVER__RM_SERIAL_DRIVER_HPP_
