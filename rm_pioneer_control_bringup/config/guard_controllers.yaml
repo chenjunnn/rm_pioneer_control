@@ -1,0 +1,12 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 400  # Hz
+
+    imu_sensor_broadcaster:
+      type: imu_sensor_broadcaster/IMUSensorBroadcaster
+
+imu_sensor_broadcaster:
+  ros__parameters:
+    frame_id: imu
+
+    sensor_name: broad_c_imu

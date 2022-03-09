@@ -45,11 +45,11 @@ CallbackReturn SerialPortHardware::on_init(const hardware_interface::HardwareInf
       return CallbackReturn::ERROR;
     }
 
-    if (joint.command_interfaces[0].name != hardware_interface::HW_IF_POSITION) {
+    if (joint.command_interfaces[0].name != hardware_interface::HW_IF_EFFORT) {
       RCLCPP_FATAL(
         rclcpp::get_logger("SerialPortHardware"),
         "Joint '%s' have %s command interfaces found. '%s' expected.", joint.name.c_str(),
-        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
+        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_EFFORT);
       return CallbackReturn::ERROR;
     }
 
