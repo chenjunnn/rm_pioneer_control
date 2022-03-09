@@ -13,12 +13,12 @@ namespace rm_pioneer_hardware
 struct ReceivePacket
 {
   uint8_t header = 0x5A;
-  float linear_acceleration_x = 0.f;
-  float linear_acceleration_y = 0.f;
-  float linear_acceleration_z = 0.f;
   float angular_velocity_x = 0.f;
   float angular_velocity_y = 0.f;
   float angular_velocity_z = 0.f;
+  float linear_acceleration_x = 0.f;
+  float linear_acceleration_y = 0.f;
+  float linear_acceleration_z = 0.f;
   uint16_t checksum = 0;
 } __attribute__((packed));
 

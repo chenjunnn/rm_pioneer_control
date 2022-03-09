@@ -14,6 +14,8 @@
 #include <thread>
 #include <unordered_map>
 
+#include "rm_serial_driver/packet.hpp"
+
 namespace rm_pioneer_hardware
 {
 class RMSerialDriver
@@ -24,7 +26,7 @@ public:
   ~RMSerialDriver();
 
   void sendRequest();
-  void readData(std::array<double, 6> & imu_raw_data);
+  ReceivePacket readData();
 
   void writeCommand();
 

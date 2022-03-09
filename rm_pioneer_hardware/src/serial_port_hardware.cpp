@@ -45,11 +45,11 @@ CallbackReturn SerialPortHardware::on_init(const hardware_interface::HardwareInf
       return CallbackReturn::ERROR;
     }
 
-    if (joint.command_interfaces[0].name != hardware_interface::HW_IF_EFFORT) {
+    if (joint.command_interfaces[0].name != hardware_interface::HW_IF_POSITION) {
       RCLCPP_FATAL(
         rclcpp::get_logger("SerialPortHardware"),
         "Joint '%s' have %s command interfaces found. '%s' expected.", joint.name.c_str(),
-        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_EFFORT);
+        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
       return CallbackReturn::ERROR;
     }
 
@@ -138,8 +138,7 @@ hardware_interface::return_type SerialPortHardware::read()
 {
   // Read imu raw data
   serial_driver_->sendRequest();
-  std::array<double, 6> imu_raw;
-  serial_driver_->readData(imu_raw);
+  auto packet = serial_driver_->readData();
   auto time = std::chrono::steady_clock::now();
 
   // Initialize
@@ -151,7 +150,10 @@ hardware_interface::return_type SerialPortHardware::read()
 
   // Update the filter
   double dt = std::chrono::duration_cast<std::chrono::nanoseconds>(time - time_prev_).count() / 1e9;
-  filter_.update(imu_raw[0], imu_raw[1], imu_raw[2], imu_raw[3], imu_raw[4], imu_raw[5], dt);
+  time_prev_ = time;
+  filter_.update(
+    packet.linear_acceleration_x, packet.linear_acceleration_y, packet.linear_acceleration_z,
+    packet.angular_velocity_x, packet.angular_velocity_y, packet.angular_velocity_z, dt);
 
   // Get the orientation:
   double q0, q1, q2, q3;
@@ -171,13 +173,13 @@ hardware_interface::return_type SerialPortHardware::read()
   hw_sensor_states_[2] = q.z();
   hw_sensor_states_[3] = q.w();
   // Linear acceleration
-  hw_sensor_states_[4] = imu_raw[0];
-  hw_sensor_states_[5] = imu_raw[1];
-  hw_sensor_states_[6] = imu_raw[2];
+  hw_sensor_states_[4] = packet.linear_acceleration_x;
+  hw_sensor_states_[5] = packet.linear_acceleration_y;
+  hw_sensor_states_[6] = packet.linear_acceleration_z;
   // Angular velocity
-  hw_sensor_states_[7] = imu_raw[3];
-  hw_sensor_states_[8] = imu_raw[4];
-  hw_sensor_states_[9] = imu_raw[5];
+  hw_sensor_states_[7] = packet.angular_velocity_x;
+  hw_sensor_states_[8] = packet.angular_velocity_y;
+  hw_sensor_states_[9] = packet.angular_velocity_z;
 
   return hardware_interface::return_type::OK;
 }

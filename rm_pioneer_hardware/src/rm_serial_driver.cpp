@@ -64,7 +64,7 @@ void RMSerialDriver::sendRequest()
   }
 }
 
-void RMSerialDriver::readData(std::array<double, 6> & imu_raw_data)
+ReceivePacket RMSerialDriver::readData()
 {
   try {
     std::vector<uint8_t> header(1);
@@ -78,12 +78,7 @@ void RMSerialDriver::readData(std::array<double, 6> & imu_raw_data)
       bool crc_ok =
         crc16::verifyCRC16CheckSum(reinterpret_cast<const uint8_t *>(&packet), sizeof(packet));
       if (crc_ok) {
-        imu_raw_data[0] = packet.linear_acceleration_x;
-        imu_raw_data[1] = packet.linear_acceleration_y;
-        imu_raw_data[2] = packet.linear_acceleration_z;
-        imu_raw_data[3] = packet.angular_velocity_x;
-        imu_raw_data[4] = packet.angular_velocity_y;
-        imu_raw_data[5] = packet.angular_velocity_z;
+        return packet;
       } else {
         RCLCPP_ERROR(logger_, "CRC error!");
       }
@@ -94,6 +89,8 @@ void RMSerialDriver::readData(std::array<double, 6> & imu_raw_data)
     RCLCPP_ERROR(logger_, "Error while receiving data: %s", ex.what());
     throw ex;
   }
+
+  return ReceivePacket();
 }
 
 // void RMSerialDriver::sendData(const auto_aim_interfaces::msg::Target::SharedPtr msg)
