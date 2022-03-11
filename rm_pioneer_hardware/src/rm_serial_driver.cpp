@@ -93,30 +93,22 @@ ReceivePacket RMSerialDriver::readData()
   return ReceivePacket();
 }
 
-// void RMSerialDriver::sendData(const auto_aim_interfaces::msg::Target::SharedPtr msg)
-// {
-//   SendPacket packet;
-//   packet.target_found = msg->target_found;
-//   packet.x = msg->position.x;
-//   packet.y = msg->position.y;
-//   packet.z = msg->position.z;
-//   packet.vx = msg->velocity.x;
-//   packet.vy = msg->velocity.y;
-//   packet.vz = msg->velocity.z;
-//   crc16::Append_CRC16_Check_Sum(reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
+void RMSerialDriver::writeCommand(const double & pitch_command, const double & yaw_command)
+{
+  try {
+    SendPacket packet;
+    packet.is_request = false;
+    packet.pitch_command = static_cast<uint16_t>(pitch_command);
+    packet.yaw_command = static_cast<uint16_t>(yaw_command);
+    crc16::appendCRC16CheckSum(reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
 
-//   std::vector<uint8_t> data = toVector(packet);
-
-//   if (serial_driver_->port()->is_open()) {
-//     serial_driver_->port()->send(data);
-//   } else {
-//     RCLCPP_WARN(logger_, "Serial port is not open, ignore sending data!");
-//   }
-
-//   std_msgs::msg::Float64 latency;
-//   latency.data = (this->now() - msg->header.stamp).seconds() * 1000.0;
-//   latency_pub_->publish(latency);
-// }
+    std::vector<uint8_t> data = toVector(packet);
+    serial_driver_->port()->send(data);
+  } catch (const std::exception & ex) {
+    RCLCPP_ERROR(logger_, "Error while writing data: %s", ex.what());
+    throw ex;
+  }
+}
 
 void RMSerialDriver::resolveParams(const std::unordered_map<std::string, std::string> & params)
 {

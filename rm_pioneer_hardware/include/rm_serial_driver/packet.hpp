@@ -26,13 +26,8 @@ struct SendPacket
 {
   uint8_t header = 0xA5;
   bool is_request = false;
-  bool target_found = false;
-  float x = 0.f;
-  float y = 0.f;
-  float z = 0.f;
-  float vx = 0.f;
-  float vy = 0.f;
-  float vz = 0.f;
+  uint16_t pitch_command = 0;
+  uint16_t yaw_command = 0;
   uint16_t checksum = 0;
 } __attribute__((packed));
 

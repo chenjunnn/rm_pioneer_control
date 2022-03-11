@@ -28,7 +28,7 @@ public:
   void sendRequest();
   ReceivePacket readData();
 
-  void writeCommand();
+  void writeCommand(const double & pitch_command, const double & yaw_command);
 
 private:
   void resolveParams(const std::unordered_map<std::string, std::string> & params);

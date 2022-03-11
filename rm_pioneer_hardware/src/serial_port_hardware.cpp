@@ -180,6 +180,10 @@ hardware_interface::return_type SerialPortHardware::read()
 
 hardware_interface::return_type SerialPortHardware::write()
 {
+  double pitch_command = hw_joint_commands_[0];
+  double yaw_command = hw_joint_commands_[1];
+  serial_driver_->writeCommand(pitch_command, yaw_command);
+
   return hardware_interface::return_type::OK;
 }
 
