@@ -63,12 +63,17 @@ CallbackReturn RMGimbalController::on_init()
     rt_js_pub_->msg_.name.emplace_back("pitch_joint");
     rt_js_pub_->msg_.name.emplace_back("yaw_joint");
 
-    // Initialize pitch position limits
-    urdf_model_.initString(node_->get_parameter("robot_description").as_string());
-    pitch_upper_limit = urdf_model_.joints_["pitch_joint"]->limits->upper;
-    pitch_lower_limit = urdf_model_.joints_["pitch_joint"]->limits->lower;
+    // Initialize joint limits
+    urdf::Model urdf_model;
+    urdf_model.initString(node_->get_parameter("robot_description").as_string());
+    pitch_upper_limit = urdf_model.joints_["pitch_joint"]->limits->upper;
+    pitch_lower_limit = urdf_model.joints_["pitch_joint"]->limits->lower;
+    pitch_effort_limit = urdf_model.joints_["pitch_joint"]->limits->effort;
+    yaw_effort_limit = urdf_model.joints_["yaw_joint"]->limits->effort;
     RCLCPP_INFO(node_->get_logger(), "Pitch joint upper limit: %f", pitch_upper_limit);
     RCLCPP_INFO(node_->get_logger(), "Pitch joint lower limit: %f", pitch_lower_limit);
+    RCLCPP_INFO(node_->get_logger(), "Pitch joint effort limit: %f", pitch_effort_limit);
+    RCLCPP_INFO(node_->get_logger(), "Yaw joint effort limit: %f", yaw_effort_limit);
   } catch (const std::exception & e) {
     fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
     return CallbackReturn::ERROR;
@@ -141,14 +146,22 @@ controller_interface::return_type RMGimbalController::update(
   double command_pitch = joint_position_commands->data[0];
   double command_yaw = joint_position_commands->data[1];
 
-  // limit pitch command
+  // limit pitch position command
   command_pitch = std::clamp(command_pitch, pitch_lower_limit, pitch_upper_limit);
 
   auto pitch_error = angles::shortest_angular_distance(current_pitch, command_pitch);
   auto yaw_error = angles::shortest_angular_distance(current_yaw, command_yaw);
 
-  pitch_pid_->computeCommand(pitch_error, period);
-  yaw_pid_->computeCommand(yaw_error, period);
+  double pitch_cmd = pitch_pid_->computeCommand(pitch_error, period);
+  double yaw_cmd = yaw_pid_->computeCommand(yaw_error, period);
+
+  // enforce output limits
+  pitch_cmd = std::clamp(pitch_cmd, -pitch_effort_limit, pitch_effort_limit);
+  yaw_cmd = std::clamp(yaw_cmd, -yaw_effort_limit, yaw_effort_limit);
+
+  // set command
+  command_interfaces_[0].set_value(pitch_cmd);
+  command_interfaces_[1].set_value(yaw_cmd);
 
   return controller_interface::return_type::OK;
 }

@@ -54,9 +54,10 @@ private:
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::JointState>> joint_state_pub_;
   std::shared_ptr<RealtimeJointStatePublisher> rt_js_pub_;
 
-  urdf::Model urdf_model_;
   double pitch_upper_limit;
   double pitch_lower_limit;
+  double pitch_effort_limit;
+  double yaw_effort_limit;
   
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_handle_;
 };
