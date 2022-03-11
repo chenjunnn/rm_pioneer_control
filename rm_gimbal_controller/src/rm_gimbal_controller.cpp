@@ -6,7 +6,9 @@
 #include <angles/angles.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <urdf/model.h>
 
+#include <algorithm>
 #include <controller_interface/controller_interface.hpp>
 #include <forward_command_controller/forward_command_controller.hpp>
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
@@ -60,6 +62,13 @@ CallbackReturn RMGimbalController::on_init()
     rt_js_pub_ = std::make_shared<RealtimeJointStatePublisher>(joint_state_pub_);
     rt_js_pub_->msg_.name.emplace_back("pitch_joint");
     rt_js_pub_->msg_.name.emplace_back("yaw_joint");
+
+    // Initialize pitch position limits
+    urdf_model_.initString(node_->get_parameter("robot_description").as_string());
+    pitch_upper_limit = urdf_model_.joints_["pitch_joint"]->limits->upper;
+    pitch_lower_limit = urdf_model_.joints_["pitch_joint"]->limits->lower;
+    RCLCPP_INFO(node_->get_logger(), "Pitch joint upper limit: %f", pitch_upper_limit);
+    RCLCPP_INFO(node_->get_logger(), "Pitch joint lower limit: %f", pitch_lower_limit);
   } catch (const std::exception & e) {
     fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
     return CallbackReturn::ERROR;
@@ -132,10 +141,12 @@ controller_interface::return_type RMGimbalController::update(
   double command_pitch = joint_position_commands->data[0];
   double command_yaw = joint_position_commands->data[1];
 
+  // limit pitch command
+  command_pitch = std::clamp(command_pitch, pitch_lower_limit, pitch_upper_limit);
+
   auto pitch_error = angles::shortest_angular_distance(current_pitch, command_pitch);
   auto yaw_error = angles::shortest_angular_distance(current_yaw, command_yaw);
 
-  // TODO(chenjun): enforcing joint limits
   pitch_pid_->computeCommand(pitch_error, period);
   yaw_pid_->computeCommand(yaw_error, period);
 

@@ -4,7 +4,8 @@
 #ifndef RM_GIMBAL_CONTROLLER__RM_GIMBAL_CONTROLLER_HPP_
 #define RM_GIMBAL_CONTROLLER__RM_GIMBAL_CONTROLLER_HPP_
 
-// ROS
+#include <urdf/model.h>
+
 #include <control_msgs/msg/pid_state.hpp>
 #include <control_toolbox/pid_ros.hpp>
 #include <forward_command_controller/forward_command_controller.hpp>
@@ -53,6 +54,10 @@ private:
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::JointState>> joint_state_pub_;
   std::shared_ptr<RealtimeJointStatePublisher> rt_js_pub_;
 
+  urdf::Model urdf_model_;
+  double pitch_upper_limit;
+  double pitch_lower_limit;
+  
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_handle_;
 };
 }  // namespace rm_gimbal_controller

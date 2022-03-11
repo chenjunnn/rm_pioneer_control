@@ -20,6 +20,7 @@
   <depend>control_toolbox</depend>
   <depend>realtime_tools</depend>
   <depend>sensor_msgs</depend>
+  <depend>urdf</depend>
 
   <build_depend>pluginlib</build_depend>
 
