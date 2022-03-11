@@ -45,11 +45,11 @@ CallbackReturn SerialPortHardware::on_init(const hardware_interface::HardwareInf
       return CallbackReturn::ERROR;
     }
 
-    if (joint.command_interfaces[0].name != hardware_interface::HW_IF_POSITION) {
+    if (joint.command_interfaces[0].name != hardware_interface::HW_IF_EFFORT) {
       RCLCPP_FATAL(
         rclcpp::get_logger("SerialPortHardware"),
         "Joint '%s' have %s command interfaces found. '%s' expected.", joint.name.c_str(),
-        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
+        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_EFFORT);
       return CallbackReturn::ERROR;
     }
 
@@ -107,7 +107,7 @@ std::vector<hardware_interface::CommandInterface> SerialPortHardware::export_com
   std::vector<hardware_interface::CommandInterface> command_interfaces;
   for (uint i = 0; i < info_.joints.size(); i++) {
     command_interfaces.emplace_back(hardware_interface::CommandInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_joint_commands_[i]));
+      info_.joints[i].name, hardware_interface::HW_IF_EFFORT, &hw_joint_commands_[i]));
   }
 
   return command_interfaces;
@@ -159,12 +159,6 @@ hardware_interface::return_type SerialPortHardware::read()
   double q0, q1, q2, q3;
   filter_.getOrientation(q0, q1, q2, q3);
   auto q = tf2::Quaternion(q1, q2, q3, q0);
-
-  // // Transform to RPY
-  // double rpy[3];
-  // tf2::Matrix3x3 M;
-  // M.setRotation(q);
-  // M.getRPY(rpy[0], rpy[1], rpy[2]);
 
   // Update the state
   // Orientation

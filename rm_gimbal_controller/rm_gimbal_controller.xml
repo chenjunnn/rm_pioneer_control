@@ -1,0 +1,9 @@
+<library path="rm_gimbal_controller">
+    <class name="rm_gimbal_controller/RMGimbalController"
+           type="rm_gimbal_controller::RMGimbalController" 
+           base_class_type="controller_interface::ControllerInterface">
+      <description>
+        The joint effort controller commands a group of joints through the effort interface
+      </description>
+    </class>
+</library>

@@ -47,6 +47,12 @@ def generate_launch_description():
         parameters=[robot_description],
     )
 
+    gimbal_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["rm_gimbal_controller", "-c", "/controller_manager"],
+    )
+
     imu_sensor_boardcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -56,6 +62,7 @@ def generate_launch_description():
     nodes = [
         control_node,
         robot_state_pub_node,
+        gimbal_controller_spawner,
         imu_sensor_boardcaster_spawner,
     ]
 
