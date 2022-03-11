@@ -7,7 +7,6 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 
-#include <control_toolbox/pid_ros.hpp>
 #include <controller_interface/controller_interface.hpp>
 #include <forward_command_controller/forward_command_controller.hpp>
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
@@ -16,16 +15,16 @@
 
 // STL
 #include <memory>
+#include <rclcpp/qos.hpp>
 #include <string>
 #include <vector>
 
 namespace rm_gimbal_controller
 {
-RMGimbalController::RMGimbalController()
-: forward_command_controller::ForwardCommandController(),
-  logger_(rclcpp::get_logger("rm_gimbal_controller"))
+RMGimbalController::RMGimbalController() : forward_command_controller::ForwardCommandController()
 {
   interface_name_ = hardware_interface::HW_IF_EFFORT;
+  joint_names_ = std::vector<std::string>{"pitch_joint", "yaw_joint"};
 }
 
 CallbackReturn RMGimbalController::on_init()
@@ -37,28 +36,34 @@ CallbackReturn RMGimbalController::on_init()
 
   try {
     // Explicitly set the joints and interface parameter declared by the forward_command_controller
-    get_node()->set_parameter(
-      rclcpp::Parameter("joints", std::vector<std::string>{"pitch_joint", "yaw_joint"}));
+    get_node()->set_parameter(rclcpp::Parameter("joints", joint_names_));
     get_node()->set_parameter(
       rclcpp::Parameter("interface_name", hardware_interface::HW_IF_EFFORT));
 
-    // Get imu sensor name
+    pitch_pid_ = std::make_unique<control_toolbox::PidROS>(node_, "pitch_joint");
+    yaw_pid_ = std::make_unique<control_toolbox::PidROS>(node_, "yaw_joint");
+    pitch_pid_->initPid();
+    yaw_pid_->initPid();
+
+    // Reset PID parameters event handler that was set previously by PidROS
+    node_->remove_on_set_parameters_callback(pitch_pid_->getParametersCallbackHandle().get());
+    node_->remove_on_set_parameters_callback(yaw_pid_->getParametersCallbackHandle().get());
+    setParameterEventCallback();
+
+    // Get imu sensor name and create IMU sensor
     sensor_name_ = auto_declare<std::string>("sensor_name", "");
+    imu_sensor_ = std::make_unique<semantic_components::IMUSensor>(
+      semantic_components::IMUSensor(sensor_name_));
+
+    // Initialize the joint state publisher
+    joint_state_pub_ = node_->create_publisher<sensor_msgs::msg::JointState>("/joint_states", 10);
+    rt_js_pub_ = std::make_shared<RealtimeJointStatePublisher>(joint_state_pub_);
+    rt_js_pub_->msg_.name.emplace_back("pitch_joint");
+    rt_js_pub_->msg_.name.emplace_back("yaw_joint");
   } catch (const std::exception & e) {
     fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
     return CallbackReturn::ERROR;
   }
-
-  pitch_pid_ = std::make_unique<control_toolbox::PidROS>(get_node(), "pitch");
-  yaw_pid_ = std::make_unique<control_toolbox::PidROS>(get_node(), "yaw");
-
-  if (pitch_pid_->initPid() == false || yaw_pid_->initPid() == false) {
-    fprintf(stderr, "PID params can't be set!");
-    return CallbackReturn::FAILURE;
-  }
-
-  imu_sensor_ =
-    std::make_unique<semantic_components::IMUSensor>(semantic_components::IMUSensor(sensor_name_));
 
   return CallbackReturn::SUCCESS;
 }
@@ -98,14 +103,6 @@ CallbackReturn RMGimbalController::on_deactivate(const rclcpp_lifecycle::State &
 controller_interface::return_type RMGimbalController::update(
   const rclcpp::Time & time, const rclcpp::Duration & period)
 {
-  auto joint_position_commands = *rt_command_ptr_.readFromRT();
-  // no command received yet
-  if (!joint_position_commands) {
-    return controller_interface::return_type::OK;
-  }
-
-  RCLCPP_INFO(logger_, "update");
-
   // get imu orientation
   auto orientation = imu_sensor_->get_orientation();
   auto q = tf2::Quaternion(orientation[0], orientation[1], orientation[2], orientation[3]);
@@ -114,6 +111,23 @@ controller_interface::return_type RMGimbalController::update(
   tf2::Matrix3x3 M;
   M.setRotation(q);
   M.getRPY(current_roll, current_pitch, current_yaw);
+
+  // publish joint states
+  if (rt_js_pub_) {
+    if (rt_js_pub_->trylock()) {
+      rt_js_pub_->msg_.header.stamp = time;
+      rt_js_pub_->msg_.position.clear();
+      rt_js_pub_->msg_.position.emplace_back(current_pitch);
+      rt_js_pub_->msg_.position.emplace_back(current_yaw);
+      rt_js_pub_->unlockAndPublish();
+    }
+  }
+
+  auto joint_position_commands = *rt_command_ptr_.readFromRT();
+  // no command received yet
+  if (!joint_position_commands) {
+    return controller_interface::return_type::OK;
+  }
 
   double command_pitch = joint_position_commands->data[0];
   double command_yaw = joint_position_commands->data[1];
@@ -126,6 +140,53 @@ controller_interface::return_type RMGimbalController::update(
   yaw_pid_->computeCommand(yaw_error, period);
 
   return controller_interface::return_type::OK;
+}
+
+void RMGimbalController::setParameterEventCallback()
+{
+  auto on_parameter_event_callback = [this](const std::vector<rclcpp::Parameter> & parameters) {
+    rcl_interfaces::msg::SetParametersResult result;
+
+    auto pitch_gain = pitch_pid_->getGains();
+    auto yaw_gain = yaw_pid_->getGains();
+
+    auto set_pid_parameters = [&](const std::string & joint_name) -> bool {
+      result.successful = true;
+      for (auto & parameter : parameters) {
+        const std::string param_name = parameter.get_name();
+        try {
+          if (param_name == joint_name + ".p") {
+            pitch_gain.p_gain_ = parameter.get_value<double>();
+          } else if (param_name == joint_name + ".i") {
+            pitch_gain.i_gain_ = parameter.get_value<double>();
+          } else if (param_name == joint_name + ".d") {
+            pitch_gain.d_gain_ = parameter.get_value<double>();
+          } else if (param_name == joint_name + ".i_clamp_max") {
+            pitch_gain.i_max_ = parameter.get_value<double>();
+          } else if (param_name == joint_name + ".i_clamp_min") {
+            pitch_gain.i_min_ = parameter.get_value<double>();
+          } else if (param_name == joint_name + ".antiwindup") {
+            pitch_gain.antiwindup_ = parameter.get_value<bool>();
+          } else {
+            result.successful = false;
+            result.reason = "Invalid parameter " + param_name;
+          }
+        } catch (const rclcpp::exceptions::InvalidParameterTypeException & e) {
+          RCLCPP_INFO_STREAM(node_->get_logger(), "Please use the right type: " << e.what());
+        }
+      }
+      return result.successful;
+    };
+
+    if (set_pid_parameters("pitch_joint")) {
+      pitch_pid_->setGains(pitch_gain);
+    } else if (set_pid_parameters("yaw_joint")) {
+      yaw_pid_->setGains(yaw_gain);
+    }
+    return result;
+  };
+
+  set_param_handle_ = node_->add_on_set_parameters_callback(on_parameter_event_callback);
 }
 
 }  // namespace rm_gimbal_controller

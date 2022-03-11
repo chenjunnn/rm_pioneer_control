@@ -16,8 +16,10 @@
   <depend>rclcpp_lifecycle</depend>
   <depend>tf2</depend>
   <depend>angles</depend>
-  <depend>control_toolbox</depend>
   <depend>forward_command_controller</depend>
+  <depend>control_toolbox</depend>
+  <depend>realtime_tools</depend>
+  <depend>sensor_msgs</depend>
 
   <build_depend>pluginlib</build_depend>
 
