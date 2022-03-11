@@ -98,8 +98,8 @@ void RMSerialDriver::writeCommand(const double & pitch_command, const double & y
   try {
     SendPacket packet;
     packet.is_request = false;
-    packet.pitch_command = static_cast<uint16_t>(pitch_command);
-    packet.yaw_command = static_cast<uint16_t>(yaw_command);
+    packet.pitch_command = static_cast<int16_t>(pitch_command);
+    packet.yaw_command = static_cast<int16_t>(yaw_command);
     crc16::appendCRC16CheckSum(reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
 
     std::vector<uint8_t> data = toVector(packet);

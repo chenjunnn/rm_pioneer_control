@@ -171,26 +171,27 @@ void RMGimbalController::setParameterEventCallback()
   auto on_parameter_event_callback = [this](const std::vector<rclcpp::Parameter> & parameters) {
     rcl_interfaces::msg::SetParametersResult result;
 
-    auto pitch_gain = pitch_pid_->getGains();
-    auto yaw_gain = yaw_pid_->getGains();
+    auto pitch_gains = pitch_pid_->getGains();
+    auto yaw_gains = yaw_pid_->getGains();
 
-    auto set_pid_parameters = [&](const std::string & joint_name) -> bool {
+    auto set_pid_parameters =
+      [&](const std::string & joint_name, control_toolbox::Pid::Gains & gains) -> bool {
       result.successful = true;
       for (auto & parameter : parameters) {
         const std::string param_name = parameter.get_name();
         try {
           if (param_name == joint_name + ".p") {
-            pitch_gain.p_gain_ = parameter.get_value<double>();
+            gains.p_gain_ = parameter.get_value<double>();
           } else if (param_name == joint_name + ".i") {
-            pitch_gain.i_gain_ = parameter.get_value<double>();
+            gains.i_gain_ = parameter.get_value<double>();
           } else if (param_name == joint_name + ".d") {
-            pitch_gain.d_gain_ = parameter.get_value<double>();
+            gains.d_gain_ = parameter.get_value<double>();
           } else if (param_name == joint_name + ".i_clamp_max") {
-            pitch_gain.i_max_ = parameter.get_value<double>();
+            gains.i_max_ = parameter.get_value<double>();
           } else if (param_name == joint_name + ".i_clamp_min") {
-            pitch_gain.i_min_ = parameter.get_value<double>();
+            gains.i_min_ = parameter.get_value<double>();
           } else if (param_name == joint_name + ".antiwindup") {
-            pitch_gain.antiwindup_ = parameter.get_value<bool>();
+            gains.antiwindup_ = parameter.get_value<bool>();
           } else {
             result.successful = false;
             result.reason = "Invalid parameter " + param_name;
@@ -202,10 +203,10 @@ void RMGimbalController::setParameterEventCallback()
       return result.successful;
     };
 
-    if (set_pid_parameters("pitch_joint")) {
-      pitch_pid_->setGains(pitch_gain);
-    } else if (set_pid_parameters("yaw_joint")) {
-      yaw_pid_->setGains(yaw_gain);
+    if (set_pid_parameters("pitch_joint", pitch_gains)) {
+      pitch_pid_->setGains(pitch_gains);
+    } else if (set_pid_parameters("yaw_joint", yaw_gains)) {
+      yaw_pid_->setGains(yaw_gains);
     }
     return result;
   };
