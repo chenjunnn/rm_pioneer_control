@@ -8,16 +8,17 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <urdf/model.h>
 
-#include <algorithm>
 #include <controller_interface/controller_interface.hpp>
 #include <forward_command_controller/forward_command_controller.hpp>
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/logging.hpp>
+#include <rclcpp/qos.hpp>
 
 // STL
+#include <algorithm>
+#include <cmath>
 #include <memory>
-#include <rclcpp/qos.hpp>
 #include <string>
 #include <vector>
 
@@ -25,8 +26,11 @@ namespace rm_gimbal_controller
 {
 RMGimbalController::RMGimbalController() : forward_command_controller::ForwardCommandController()
 {
+  joint_names_ = {"pitch_joint", "yaw_joint"};
   interface_name_ = hardware_interface::HW_IF_EFFORT;
-  joint_names_ = std::vector<std::string>{"pitch_joint", "yaw_joint"};
+
+  pitch_position_command_ = 0;
+  yaw_position_command_ = 0;
 }
 
 CallbackReturn RMGimbalController::on_init()
@@ -66,19 +70,41 @@ CallbackReturn RMGimbalController::on_init()
     // Initialize joint limits
     urdf::Model urdf_model;
     urdf_model.initString(node_->get_parameter("robot_description").as_string());
-    pitch_upper_limit = urdf_model.joints_["pitch_joint"]->limits->upper;
-    pitch_lower_limit = urdf_model.joints_["pitch_joint"]->limits->lower;
-    pitch_effort_limit = urdf_model.joints_["pitch_joint"]->limits->effort;
-    yaw_effort_limit = urdf_model.joints_["yaw_joint"]->limits->effort;
-    RCLCPP_INFO(node_->get_logger(), "Pitch joint upper limit: %f", pitch_upper_limit);
-    RCLCPP_INFO(node_->get_logger(), "Pitch joint lower limit: %f", pitch_lower_limit);
-    RCLCPP_INFO(node_->get_logger(), "Pitch joint effort limit: %f", pitch_effort_limit);
-    RCLCPP_INFO(node_->get_logger(), "Yaw joint effort limit: %f", yaw_effort_limit);
+    // Pitch limits
+    auto pitch_joint_limits = urdf_model.getJoint("pitch_joint")->limits;
+    pitch_upper_limit_ = pitch_joint_limits->upper;
+    pitch_lower_limit_ = pitch_joint_limits->lower;
+    pitch_velocity_limit_ = pitch_joint_limits->velocity;
+    pitch_effort_limit_ = pitch_joint_limits->effort;
+    RCLCPP_INFO(node_->get_logger(), "Pitch joint upper limit: %f", pitch_upper_limit_);
+    RCLCPP_INFO(node_->get_logger(), "Pitch joint lower limit: %f", pitch_lower_limit_);
+    RCLCPP_INFO(node_->get_logger(), "Pitch joint velocity limit: %f", pitch_velocity_limit_);
+    RCLCPP_INFO(node_->get_logger(), "Pitch joint effort limit: %f", pitch_effort_limit_);
+    // Yaw limits
+    auto yaw_joint_limits = urdf_model.getJoint("yaw_joint")->limits;
+    yaw_velocity_limit_ = yaw_joint_limits->velocity;
+    yaw_effort_limit_ = yaw_joint_limits->effort;
+    RCLCPP_INFO(node_->get_logger(), "Yaw joint effort limit: %f", yaw_effort_limit_);
+    RCLCPP_INFO(node_->get_logger(), "Yaw joint velocity limit: %f", yaw_velocity_limit_);
   } catch (const std::exception & e) {
     fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
     return CallbackReturn::ERROR;
   }
 
+  return CallbackReturn::SUCCESS;
+}
+
+CallbackReturn RMGimbalController::on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
+{
+  joints_command_subscriber_ = get_node()->create_subscription<CmdType>(
+    "~/commands", rclcpp::SystemDefaultsQoS(),
+    [this](const CmdType::SharedPtr msg) { rt_command_ptr_.writeFromNonRT(msg); });
+
+  auto_aim_target_subscriber_ = get_node()->create_subscription<TargetMsg>(
+    "~/target", rclcpp::SensorDataQoS(),
+    [this](const TargetMsg::SharedPtr msg) { rt_target_ptr_.writeFromNonRT(msg); });
+
+  RCLCPP_INFO(get_node()->get_logger(), "configure successful");
   return CallbackReturn::SUCCESS;
 }
 
@@ -97,6 +123,9 @@ CallbackReturn RMGimbalController::on_activate(const rclcpp_lifecycle::State & p
 
   imu_sensor_->assign_loaned_state_interfaces(state_interfaces_);
 
+  // reset buffer if a target msg came through callback when controller was inactive
+  rt_target_ptr_.reset();
+
   return ret;
 }
 
@@ -110,6 +139,9 @@ CallbackReturn RMGimbalController::on_deactivate(const rclcpp_lifecycle::State &
   }
 
   imu_sensor_->release_interfaces();
+
+  // reset target buffer
+  rt_target_ptr_.reset();
 
   return ret;
 }
@@ -137,31 +169,52 @@ controller_interface::return_type RMGimbalController::update(
     }
   }
 
-  auto joint_position_commands = *rt_command_ptr_.readFromRT();
+  auto joint_commands = rt_command_ptr_.readFromRT();
+  auto target_msg = rt_target_ptr_.readFromRT();
+
   // no command received yet
-  if (!joint_position_commands) {
+  if (!joint_commands || !(*joint_commands)) {
     return controller_interface::return_type::OK;
   }
 
-  double command_pitch = joint_position_commands->data[0];
-  double command_yaw = joint_position_commands->data[1];
+  // left trigger has not been pressed
+  if (joint_commands->get()->axes[2] > 0.5) {
+    double pitch_velocity_command = pitch_velocity_limit_ * -joint_commands->get()->axes[4];
+    double yaw_velocity_command = yaw_velocity_limit_ * joint_commands->get()->axes[3];
+
+    pitch_position_command_ += pitch_velocity_command * period.seconds();
+    yaw_position_command_ += yaw_velocity_command * period.seconds();
+
+  } else if (target_msg && *target_msg && target_msg->get()->target_found) {
+    double latency = (time - target_msg->get()->header.stamp).seconds();
+    double x = target_msg->get()->position.x + target_msg->get()->velocity.x * latency;
+    double y = target_msg->get()->position.y + target_msg->get()->velocity.y * latency;
+    double z = target_msg->get()->position.z + target_msg->get()->velocity.z * latency;
+
+    auto distance = std::sqrt(std::pow(x, 2) + std::pow(y, 2));
+    pitch_position_command_ = -std::atan2(z, distance);
+
+    yaw_position_command_ =
+      std::atan2(target_msg->get()->position.y, target_msg->get()->position.x);
+  }
 
   // limit pitch position command
-  command_pitch = std::clamp(command_pitch, pitch_lower_limit, pitch_upper_limit);
+  pitch_position_command_ =
+    std::clamp(pitch_position_command_, pitch_lower_limit_, pitch_upper_limit_);
 
-  auto pitch_error = angles::shortest_angular_distance(current_pitch, command_pitch);
-  auto yaw_error = angles::shortest_angular_distance(current_yaw, command_yaw);
+  auto pitch_error = angles::shortest_angular_distance(current_pitch, pitch_position_command_);
+  auto yaw_error = angles::shortest_angular_distance(current_yaw, yaw_position_command_);
 
-  double pitch_cmd = pitch_pid_->computeCommand(pitch_error, period);
-  double yaw_cmd = yaw_pid_->computeCommand(yaw_error, period);
+  double pitch_output = pitch_pid_->computeCommand(pitch_error, period);
+  double yaw_output = yaw_pid_->computeCommand(yaw_error, period);
 
   // enforce output limits
-  pitch_cmd = std::clamp(pitch_cmd, -pitch_effort_limit, pitch_effort_limit);
-  yaw_cmd = std::clamp(yaw_cmd, -yaw_effort_limit, yaw_effort_limit);
+  pitch_output = std::clamp(pitch_output, -pitch_effort_limit_, pitch_effort_limit_);
+  yaw_output = std::clamp(yaw_output, -yaw_effort_limit_, yaw_effort_limit_);
 
-  // set command
-  command_interfaces_[0].set_value(pitch_cmd);
-  command_interfaces_[1].set_value(yaw_cmd);
+  // set output
+  command_interfaces_[0].set_value(pitch_output);
+  command_interfaces_[1].set_value(yaw_output);
 
   return controller_interface::return_type::OK;
 }

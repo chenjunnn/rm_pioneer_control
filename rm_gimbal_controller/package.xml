@@ -21,6 +21,7 @@
   <depend>realtime_tools</depend>
   <depend>sensor_msgs</depend>
   <depend>urdf</depend>
+  <depend>auto_aim_interfaces</depend>
 
   <build_depend>pluginlib</build_depend>
 
