@@ -38,7 +38,8 @@ def generate_launch_description():
         package="controller_manager",
         executable="ros2_control_node",
         parameters=[robot_description, robot_controllers],
-        remappings=[("/rm_gimbal_controller/commands", "/joy")],
+        remappings=[("/rm_gimbal_controller/commands", "/joy"),
+                    ("/rm_gimbal_controller/target", "/processor/target"),],
         output="screen",
     )
 
@@ -55,17 +56,10 @@ def generate_launch_description():
         arguments=["rm_gimbal_controller", "-c", "/controller_manager"],
     )
 
-    imu_sensor_boardcaster_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["imu_sensor_broadcaster", "-c", "/controller_manager"],
-    )
-
     nodes = [
         control_node,
         robot_state_pub_node,
         gimbal_controller_spawner,
-        imu_sensor_boardcaster_spawner,
     ]
 
     return LaunchDescription(declared_arguments + nodes)

@@ -6,6 +6,14 @@
     <!-- Import guard ros2_control description -->
     <xacro:include filename="$(find rm_pioneer_description)/ros2_control/guard.ros2_control.xacro" />
 
+    <xacro:property name="pitch_joint_limit">
+        <limit lower="0.0" upper="0.5" velocity="3.0" effort="30000"/>
+    </xacro:property>
+
+    <xacro:property name="yaw_joint_limit">
+        <limit velocity="3.0" effort="30000"/>
+    </xacro:property>
+
     <link name="base_link" />
 
     <link name="yaw_link">
@@ -36,7 +44,7 @@
         <parent link="base_link" />
         <child link="yaw_link" />
         <axis xyz="0 0 1" />
-        <limit velocity="0" effort="30000"/>
+        <xacro:insert_block name="yaw_joint_limit" />
     </joint>
 
     <link name="pitch_link">
@@ -67,7 +75,7 @@
         <parent link="yaw_link" />
         <child link="pitch_link" />
         <axis xyz="0 1 0" />
-        <limit lower="0.0" upper="0.5" velocity="0" effort="30000"/>
+        <xacro:insert_block name="pitch_joint_limit" />
     </joint>
 
     <link name="shooter_link" />
@@ -111,7 +119,7 @@
     <link name="camera_optical_frame" />
 
     <joint name="camera_optical_joint" type="fixed">
-        <origin xyz="0 0 0" rpy="${pi/2} 0 ${pi/2}" />
+        <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
         <parent link="camera_base_link" />
         <child link="camera_optical_frame" />
     </joint>
