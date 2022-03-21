@@ -73,7 +73,9 @@ private:
   double yaw_effort_limit_;
 
   double pitch_position_command_;
+  double pitch_velocity_command_;
   double yaw_position_command_;
+  double yaw_velocity_command_;
 
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_handle_;
 };

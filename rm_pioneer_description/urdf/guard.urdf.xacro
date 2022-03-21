@@ -7,11 +7,11 @@
     <xacro:include filename="$(find rm_pioneer_description)/ros2_control/guard.ros2_control.xacro" />
 
     <xacro:property name="pitch_joint_limit">
-        <limit lower="0.0" upper="0.5" velocity="3.0" effort="30000"/>
+        <limit lower="0.0" upper="0.5" velocity="3.0" effort="0.8"/>
     </xacro:property>
 
     <xacro:property name="yaw_joint_limit">
-        <limit velocity="3.0" effort="30000"/>
+        <limit velocity="3.0" effort="0.8"/>
     </xacro:property>
 
     <link name="base_link" />

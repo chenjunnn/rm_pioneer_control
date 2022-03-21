@@ -9,6 +9,7 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "hardware_interface/system_interface.hpp"
@@ -67,6 +68,10 @@ CallbackReturn SerialPortHardware::on_init(const hardware_interface::HardwareInf
         joint.state_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
       return CallbackReturn::ERROR;
     }
+
+    // Initialize joint coefficients
+    hw_joint_coefficients_.emplace_back(
+      std::stod(joint.parameters.at("effort_actuator_coefficient")));
   }
 
   return CallbackReturn::SUCCESS;
@@ -171,17 +176,17 @@ hardware_interface::return_type SerialPortHardware::read()
   hw_sensor_states_[5] = packet.linear_acceleration_y;
   hw_sensor_states_[6] = packet.linear_acceleration_z;
   // Angular velocity
-  hw_sensor_states_[7] = packet.angular_velocity_x;
-  hw_sensor_states_[8] = packet.angular_velocity_y;
-  hw_sensor_states_[9] = packet.angular_velocity_z;
+  hw_sensor_states_[7] = packet.angular_velocity_x - filter_.getAngularVelocityBiasX();
+  hw_sensor_states_[8] = packet.angular_velocity_y - filter_.getAngularVelocityBiasY();
+  hw_sensor_states_[9] = packet.angular_velocity_z - filter_.getAngularVelocityBiasZ();
 
   return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type SerialPortHardware::write()
 {
-  double pitch_command = hw_joint_commands_[0];
-  double yaw_command = hw_joint_commands_[1];
+  double pitch_command = hw_joint_coefficients_[0] * hw_joint_commands_[0];
+  double yaw_command = hw_joint_coefficients_[1] * hw_joint_commands_[1];
   serial_driver_->writeCommand(pitch_command, yaw_command);
 
   return hardware_interface::return_type::OK;

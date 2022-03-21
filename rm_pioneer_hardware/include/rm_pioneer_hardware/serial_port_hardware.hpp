@@ -44,6 +44,8 @@ private:
   std::vector<double> hw_joint_commands_;
   std::vector<double> hw_joint_states_;
   std::vector<double> hw_sensor_states_;
+
+  std::vector<double> hw_joint_coefficients_;
 };
 }  // namespace rm_pioneer_hardware
 

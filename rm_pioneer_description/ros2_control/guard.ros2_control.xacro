@@ -15,10 +15,12 @@
             </hardware>
 
             <joint name="pitch_joint">
+                <param name="effort_actuator_coefficient">-25000</param>
                 <command_interface name="effort"/>
                 <state_interface name="position"/>
             </joint>
             <joint name="yaw_joint">
+                <param name="effort_actuator_coefficient">-25000</param>
                 <command_interface name="effort"/>
                 <state_interface name="position"/>
             </joint>

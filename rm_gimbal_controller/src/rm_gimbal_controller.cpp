@@ -179,12 +179,11 @@ controller_interface::return_type RMGimbalController::update(
 
   // left trigger has not been pressed
   if (joint_commands->get()->axes[2] > 0.5) {
-    double pitch_velocity_command = pitch_velocity_limit_ * -joint_commands->get()->axes[4];
-    double yaw_velocity_command = yaw_velocity_limit_ * joint_commands->get()->axes[3];
+    pitch_velocity_command_ = pitch_velocity_limit_ * -joint_commands->get()->axes[4];
+    pitch_position_command_ += pitch_velocity_command_ * period.seconds();
 
-    pitch_position_command_ += pitch_velocity_command * period.seconds();
-    yaw_position_command_ += yaw_velocity_command * period.seconds();
-
+    yaw_velocity_command_ = yaw_velocity_limit_ * joint_commands->get()->axes[3];
+    yaw_position_command_ += yaw_velocity_command_ * period.seconds();
   } else if (target_msg && *target_msg && target_msg->get()->target_found) {
     double latency = (time - target_msg->get()->header.stamp).seconds();
     double x = target_msg->get()->position.x + target_msg->get()->velocity.x * latency;
@@ -193,20 +192,26 @@ controller_interface::return_type RMGimbalController::update(
 
     auto distance = std::sqrt(std::pow(x, 2) + std::pow(y, 2));
     pitch_position_command_ = -std::atan2(z, distance);
+    pitch_velocity_command_ = 0.0;
 
     yaw_position_command_ =
       std::atan2(target_msg->get()->position.y, target_msg->get()->position.x);
+    yaw_velocity_command_ = 0.0;
   }
 
   // limit pitch position command
   pitch_position_command_ =
     std::clamp(pitch_position_command_, pitch_lower_limit_, pitch_upper_limit_);
 
-  auto pitch_error = angles::shortest_angular_distance(current_pitch, pitch_position_command_);
-  auto yaw_error = angles::shortest_angular_distance(current_yaw, yaw_position_command_);
+  double pitch_position_error =
+    angles::shortest_angular_distance(current_pitch, pitch_position_command_);
+  double pitch_velocity_error = pitch_velocity_command_ - imu_sensor_->get_angular_velocity()[0];
+  double pitch_output =
+    pitch_pid_->computeCommand(pitch_position_error, pitch_velocity_error, period);
 
-  double pitch_output = pitch_pid_->computeCommand(pitch_error, period);
-  double yaw_output = yaw_pid_->computeCommand(yaw_error, period);
+  double yaw_position_error = angles::shortest_angular_distance(current_yaw, yaw_position_command_);
+  double yaw_velocity_error = yaw_velocity_command_ - imu_sensor_->get_angular_velocity()[2];
+  double yaw_output = yaw_pid_->computeCommand(yaw_position_error, yaw_velocity_error, period);
 
   // enforce output limits
   pitch_output = std::clamp(pitch_output, -pitch_effort_limit_, pitch_effort_limit_);
