@@ -67,6 +67,24 @@ CallbackReturn RMGimbalController::on_init()
     rt_js_pub_->msg_.name.emplace_back("pitch_joint");
     rt_js_pub_->msg_.name.emplace_back("yaw_joint");
 
+    // Initialize the marker publisher
+    marker_pub_ =
+      node_->create_publisher<visualization_msgs::msg::Marker>("/visualization_marker", 10);
+    rt_marker_pub_ = std::make_shared<RealtimeMarkerPublisher>(marker_pub_);
+    rt_marker_pub_->msg_.header.frame_id = "shooter_link";
+    rt_marker_pub_->msg_.ns = "gimbal_controller";
+    rt_marker_pub_->msg_.id = 0;
+    rt_marker_pub_->msg_.type = visualization_msgs::msg::Marker::POINTS;
+    rt_marker_pub_->msg_.action = visualization_msgs::msg::Marker::ADD;
+    rt_marker_pub_->msg_.scale.x = 0.1;
+    rt_marker_pub_->msg_.scale.y = 0.1;
+    rt_marker_pub_->msg_.scale.z = 0.1;
+    rt_marker_pub_->msg_.color.a = 1.0;
+    rt_marker_pub_->msg_.color.r = 0.0;
+    rt_marker_pub_->msg_.color.g = 1.0;
+    rt_marker_pub_->msg_.color.b = 1.0;
+    rt_marker_pub_->msg_.lifetime = rclcpp::Duration::from_seconds(0.1);
+
     // Initialize joint limits
     urdf::Model urdf_model;
     urdf_model.initString(node_->get_parameter("robot_description").as_string());
@@ -178,25 +196,46 @@ controller_interface::return_type RMGimbalController::update(
   }
 
   // left trigger has not been pressed
-  if (joint_commands->get()->axes[2] > 0.5) {
+  if (target_msg && *target_msg && target_msg->get()->target_found) {
+    double latency = (time - target_msg->get()->header.stamp).seconds();
+    double origin_x = target_msg->get()->position.x;
+    double origin_y = target_msg->get()->position.y;
+    double origin_z = target_msg->get()->position.z;
+
+    double velocity_x = target_msg->get()->velocity.x;
+    double velocity_y = target_msg->get()->velocity.y;
+    double velocity_z = target_msg->get()->velocity.z;
+
+    double predict_x = origin_x + velocity_x * (latency + 0.2);
+    double predict_y = origin_y + velocity_y * (latency + 0.2);
+    double predict_z = origin_z + velocity_z * (latency + 0.2);
+
+    // Publish marker
+    if (rt_marker_pub_) {
+      if (rt_marker_pub_->trylock()) {
+        rt_marker_pub_->msg_.header.stamp = time;
+        rt_marker_pub_->msg_.points.clear();
+        geometry_msgs::msg::Point p;
+        p.x = predict_x;
+        p.y = predict_y;
+        p.z = predict_z;
+        rt_marker_pub_->msg_.points.emplace_back(p);
+        rt_marker_pub_->unlockAndPublish();
+      }
+    }
+
+    double distance = std::sqrt(std::pow(predict_x, 2) + std::pow(predict_y, 2));
+    pitch_position_command_ = -std::atan2(predict_z, distance);
+    pitch_velocity_command_ = 0.0;
+
+    yaw_position_command_ = std::atan2(predict_y, predict_x);
+    yaw_velocity_command_ = 0.0;
+  } else {
     pitch_velocity_command_ = pitch_velocity_limit_ * -joint_commands->get()->axes[4];
     pitch_position_command_ += pitch_velocity_command_ * period.seconds();
 
     yaw_velocity_command_ = yaw_velocity_limit_ * joint_commands->get()->axes[3];
     yaw_position_command_ += yaw_velocity_command_ * period.seconds();
-  } else if (target_msg && *target_msg && target_msg->get()->target_found) {
-    double latency = (time - target_msg->get()->header.stamp).seconds();
-    double x = target_msg->get()->position.x + target_msg->get()->velocity.x * latency;
-    double y = target_msg->get()->position.y + target_msg->get()->velocity.y * latency;
-    double z = target_msg->get()->position.z + target_msg->get()->velocity.z * latency;
-
-    auto distance = std::sqrt(std::pow(x, 2) + std::pow(y, 2));
-    pitch_position_command_ = -std::atan2(z, distance);
-    pitch_velocity_command_ = 0.0;
-
-    yaw_position_command_ =
-      std::atan2(target_msg->get()->position.y, target_msg->get()->position.x);
-    yaw_velocity_command_ = 0.0;
   }
 
   // limit pitch position command

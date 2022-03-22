@@ -13,6 +13,7 @@
 #include <semantic_components/imu_sensor.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <sensor_msgs/msg/joy.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 
 // STL
 #include <memory>
@@ -25,6 +26,7 @@ namespace rm_gimbal_controller
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 using RealtimePIDStatePublisher = realtime_tools::RealtimePublisher<control_msgs::msg::PidState>;
 using RealtimeJointStatePublisher = realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>;
+using RealtimeMarkerPublisher = realtime_tools::RealtimePublisher<visualization_msgs::msg::Marker>;
 using CmdType = sensor_msgs::msg::Joy;
 using TargetMsg = auto_aim_interfaces::msg::Target;
 
@@ -57,6 +59,9 @@ private:
 
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::JointState>> joint_state_pub_;
   std::shared_ptr<RealtimeJointStatePublisher> rt_js_pub_;
+
+  std::shared_ptr<rclcpp::Publisher<visualization_msgs::msg::Marker>> marker_pub_;
+  std::shared_ptr<RealtimeMarkerPublisher> rt_marker_pub_;
 
   realtime_tools::RealtimeBuffer<std::shared_ptr<CmdType>> rt_command_ptr_;
   rclcpp::Subscription<CmdType>::SharedPtr joints_command_subscriber_;

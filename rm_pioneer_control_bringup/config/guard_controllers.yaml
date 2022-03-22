@@ -11,9 +11,9 @@ controller_manager:
 rm_gimbal_controller:
   ros__parameters:
     pitch_joint:
-      p: 3.0
+      p: 2.0
       i: 0.0
-      d: 0.15
+      d: 0.3
       i_clamp_max: 0.0
       i_clamp_min: 0.0
       antiwindup: false
