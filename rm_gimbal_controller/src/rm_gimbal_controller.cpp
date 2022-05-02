@@ -176,6 +176,8 @@ controller_interface::return_type RMGimbalController::update(
   M.setRotation(q);
   M.getRPY(current_roll, current_pitch, current_yaw);
 
+  current_pitch = current_roll;
+
   // publish joint states
   if (rt_js_pub_) {
     if (rt_js_pub_->trylock()) {
@@ -187,13 +189,16 @@ controller_interface::return_type RMGimbalController::update(
     }
   }
 
-  auto joint_commands = rt_command_ptr_.readFromRT();
+  // auto joint_commands = rt_command_ptr_.readFromRT();
   auto target_msg = rt_target_ptr_.readFromRT();
 
   // no command received yet
-  if (!joint_commands || !(*joint_commands)) {
-    return controller_interface::return_type::OK;
-  }
+  // if (!joint_commands || !(*joint_commands)) {
+  //   return controller_interface::return_type::OK;
+  // }
+
+  pitch_velocity_command_ = 0.0;
+  yaw_velocity_command_ = 0.0;
 
   // left trigger has not been pressed
   if (target_msg && *target_msg && target_msg->get()->target_found) {
@@ -226,16 +231,8 @@ controller_interface::return_type RMGimbalController::update(
 
     double distance = std::sqrt(std::pow(predict_x, 2) + std::pow(predict_y, 2));
     pitch_position_command_ = -std::atan2(predict_z, distance);
-    pitch_velocity_command_ = 0.0;
 
     yaw_position_command_ = std::atan2(predict_y, predict_x);
-    yaw_velocity_command_ = 0.0;
-  } else {
-    pitch_velocity_command_ = pitch_velocity_limit_ * -joint_commands->get()->axes[4];
-    pitch_position_command_ += pitch_velocity_command_ * period.seconds();
-
-    yaw_velocity_command_ = yaw_velocity_limit_ * joint_commands->get()->axes[3];
-    yaw_position_command_ += yaw_velocity_command_ * period.seconds();
   }
 
   // limit pitch position command

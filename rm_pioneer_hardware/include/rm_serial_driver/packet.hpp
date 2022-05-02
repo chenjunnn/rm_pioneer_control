@@ -26,7 +26,6 @@ struct SendPacket
 {
   uint8_t header = 0xA5;
   bool is_request = false;
-  bool shoot_cmd = false;
   int16_t pitch_command = 0;
   int16_t yaw_command = 0;
   uint16_t checksum = 0;

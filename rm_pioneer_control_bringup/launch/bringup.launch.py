@@ -39,15 +39,15 @@ def generate_launch_description():
         executable="ros2_control_node",
         parameters=[robot_description, robot_controllers],
         remappings=[("/rm_gimbal_controller/commands", "/joy"),
-                    ("/rm_gimbal_controller/target", "/processor/target"),],
+                    ("/rm_gimbal_controller/target", "/processor/target"), ],
         output="screen",
     )
 
     robot_state_pub_node = Node(
-        package="robot_state_publisher",
-        executable="robot_state_publisher",
-        output="screen",
-        parameters=[robot_description],
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        parameters=[{'robot_description': robot_description_content,
+                     'publish_frequency': 1000.0}]
     )
 
     gimbal_controller_spawner = Node(
