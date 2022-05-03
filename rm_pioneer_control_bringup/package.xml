@@ -10,7 +10,6 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <exec_depend>ros2_control</exec_depend>
-  <exec_depend>imu_sensor_broadcaster</exec_depend>
 
   <exec_depend>rm_pioneer_hardware</exec_depend>
   <exec_depend>rm_pioneer_description</exec_depend>

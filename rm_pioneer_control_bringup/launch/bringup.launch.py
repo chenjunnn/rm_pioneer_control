@@ -31,9 +31,9 @@ def generate_launch_description():
         package="controller_manager",
         executable="ros2_control_node",
         parameters=[{"robot_description": robot_description}, robot_controllers],
-        remappings=[("/rm_gimbal_controller/commands", "/joy"),
-                    ("/rm_gimbal_controller/target", "/processor/target"), ],
+        remappings=[("/rm_gimbal_controller/target", "/processor/target"), ],
         output="screen",
+        emulate_tty=True,
     )
 
     gimbal_controller_spawner = Node(

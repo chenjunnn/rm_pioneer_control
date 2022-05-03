@@ -5,9 +5,6 @@ controller_manager:
     rm_gimbal_controller:
       type: rm_gimbal_controller/RMGimbalController
 
-    imu_sensor_broadcaster:
-      type: imu_sensor_broadcaster/IMUSensorBroadcaster
-
 rm_gimbal_controller:
   ros__parameters:
     pitch_joint:
