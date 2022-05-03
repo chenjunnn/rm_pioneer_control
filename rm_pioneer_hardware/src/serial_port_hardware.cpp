@@ -3,6 +3,7 @@
 
 #include "rm_pioneer_hardware/serial_port_hardware.hpp"
 
+#include <math.h>
 #include <tf2/LinearMath/Quaternion.h>
 
 #include <array>
@@ -38,40 +39,11 @@ CallbackReturn SerialPortHardware::on_init(const hardware_interface::HardwareInf
     info_.sensors[0].state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
 
   for (const hardware_interface::ComponentInfo & joint : info_.joints) {
-    if (joint.command_interfaces.size() != 1) {
-      RCLCPP_FATAL(
-        rclcpp::get_logger("SerialPortHardware"),
-        "Joint '%s' has %zu command interfaces found. 1 expected.", joint.name.c_str(),
-        joint.command_interfaces.size());
-      return CallbackReturn::ERROR;
-    }
-
-    if (joint.command_interfaces[0].name != hardware_interface::HW_IF_EFFORT) {
-      RCLCPP_FATAL(
-        rclcpp::get_logger("SerialPortHardware"),
-        "Joint '%s' have %s command interfaces found. '%s' expected.", joint.name.c_str(),
-        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_EFFORT);
-      return CallbackReturn::ERROR;
-    }
-
-    if (joint.state_interfaces.size() != 1) {
-      RCLCPP_FATAL(
-        rclcpp::get_logger("SerialPortHardware"), "Joint '%s' has %zu state interface. 1 expected.",
-        joint.name.c_str(), joint.state_interfaces.size());
-      return CallbackReturn::ERROR;
-    }
-
-    if (joint.state_interfaces[0].name != hardware_interface::HW_IF_POSITION) {
-      RCLCPP_FATAL(
-        rclcpp::get_logger("SerialPortHardware"),
-        "Joint '%s' have %s state interface. '%s' expected.", joint.name.c_str(),
-        joint.state_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
-      return CallbackReturn::ERROR;
-    }
-
     // Initialize joint coefficients
-    hw_joint_coefficients_.emplace_back(
-      std::stod(joint.parameters.at("effort_actuator_coefficient")));
+    if (joint.parameters.find("effort_actuator_coefficient") != joint.parameters.end()) {
+      hw_joint_coefficients_.emplace_back(
+        std::stod(joint.parameters.at("effort_actuator_coefficient")));
+    }
   }
 
   return CallbackReturn::SUCCESS;
@@ -180,6 +152,10 @@ hardware_interface::return_type SerialPortHardware::read()
   hw_sensor_states_[8] = packet.angular_velocity_y - filter_.getAngularVelocityBiasY();
   hw_sensor_states_[9] = packet.angular_velocity_z - filter_.getAngularVelocityBiasZ();
 
+  // Get motor position
+  hw_joint_states_[2] = packet.motor_pitch / 180.0 * M_PI;
+  hw_joint_states_[3] = packet.motor_yaw / 180.0 * M_PI;
+
   return hardware_interface::return_type::OK;
 }
 
@@ -187,7 +163,7 @@ hardware_interface::return_type SerialPortHardware::write()
 {
   double pitch_command = hw_joint_coefficients_[0] * hw_joint_commands_[0];
   double yaw_command = hw_joint_coefficients_[1] * hw_joint_commands_[1];
-  bool shoot_command = hw_joint_commands_[2];
+  bool shoot_command = hw_joint_commands_[4];
   serial_driver_->writeCommand(pitch_command, yaw_command, shoot_command);
 
   return hardware_interface::return_type::OK;

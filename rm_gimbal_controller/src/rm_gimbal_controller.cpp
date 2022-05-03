@@ -67,23 +67,10 @@ CallbackReturn RMGimbalController::on_init()
     rt_js_pub_->msg_.name.emplace_back("pitch_joint");
     rt_js_pub_->msg_.name.emplace_back("yaw_joint");
 
-    // Initialize the marker publisher
-    marker_pub_ =
-      node_->create_publisher<visualization_msgs::msg::Marker>("/visualization_marker", 10);
-    rt_marker_pub_ = std::make_shared<RealtimeMarkerPublisher>(marker_pub_);
-    rt_marker_pub_->msg_.header.frame_id = "shooter_link";
-    rt_marker_pub_->msg_.ns = "gimbal_controller";
-    rt_marker_pub_->msg_.id = 0;
-    rt_marker_pub_->msg_.type = visualization_msgs::msg::Marker::POINTS;
-    rt_marker_pub_->msg_.action = visualization_msgs::msg::Marker::ADD;
-    rt_marker_pub_->msg_.scale.x = 0.1;
-    rt_marker_pub_->msg_.scale.y = 0.1;
-    rt_marker_pub_->msg_.scale.z = 0.1;
-    rt_marker_pub_->msg_.color.a = 1.0;
-    rt_marker_pub_->msg_.color.r = 0.0;
-    rt_marker_pub_->msg_.color.g = 1.0;
-    rt_marker_pub_->msg_.color.b = 1.0;
-    rt_marker_pub_->msg_.lifetime = rclcpp::Duration::from_seconds(0.1);
+    // Initialize the motor position publisher
+    motor_position_pub_ = node_->create_publisher<geometry_msgs::msg::Vector3>(
+      "/motor_position", rclcpp::SensorDataQoS());
+    rt_mp_pub_ = std::make_shared<RealtimePositionPublisher>(motor_position_pub_);
 
     // Initialize joint limits
     urdf::Model urdf_model;
@@ -132,6 +119,10 @@ controller_interface::InterfaceConfiguration RMGimbalController::state_interface
   controller_interface::InterfaceConfiguration state_interfaces_config;
   state_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
   state_interfaces_config.names = imu_sensor_->get_state_interface_names();
+
+  state_interfaces_config.names.emplace_back("pitch_motor/position");
+  state_interfaces_config.names.emplace_back("yaw_motor/position");
+
   return state_interfaces_config;
 }
 
@@ -176,6 +167,7 @@ controller_interface::return_type RMGimbalController::update(
   M.setRotation(q);
   M.getRPY(current_roll, current_pitch, current_yaw);
 
+  // TODO(chenjun): guard IMU rotates 90 degrees
   current_pitch = current_roll;
 
   // publish joint states
@@ -189,20 +181,34 @@ controller_interface::return_type RMGimbalController::update(
     }
   }
 
-  // auto joint_commands = rt_command_ptr_.readFromRT();
+  // Get motor position
+  double pitch_motor_position = 0.0;
+  double yaw_motor_position = 0.0;
+  for (const auto & state : state_interfaces_) {
+    if (state.get_full_name() == "pitch_motor/position") {
+      pitch_motor_position = state.get_value();
+    } else if (state.get_full_name() == "yaw_motor/position") {
+      yaw_motor_position = state.get_value();
+    }
+  }
+
+  // Publish motor position
+  if (rt_mp_pub_) {
+    if (rt_mp_pub_->trylock()) {
+      // roll pitch yaw
+      rt_mp_pub_->msg_.x = 0;
+      rt_mp_pub_->msg_.y = pitch_motor_position;
+      rt_mp_pub_->msg_.z = yaw_motor_position;
+      rt_mp_pub_->unlockAndPublish();
+    }
+  }
+
+  auto joint_commands = rt_command_ptr_.readFromRT();
   auto target_msg = rt_target_ptr_.readFromRT();
 
-  // no command received yet
-  // if (!joint_commands || !(*joint_commands)) {
-  //   return controller_interface::return_type::OK;
-  // }
-
-  pitch_velocity_command_ = 0.0;
-  yaw_velocity_command_ = 0.0;
-
-  // Target found
   bool target_found = false;
   if (target_msg && *target_msg && target_msg->get()->target_found) {
+    // Target found
     target_found = true;
 
     double latency = (time - target_msg->get()->header.stamp).seconds();
@@ -218,24 +224,23 @@ controller_interface::return_type RMGimbalController::update(
     double predict_y = origin_y + velocity_y * (latency + 0.2);
     double predict_z = origin_z + velocity_z * (latency + 0.2);
 
-    // Publish marker
-    if (rt_marker_pub_) {
-      if (rt_marker_pub_->trylock()) {
-        rt_marker_pub_->msg_.header.stamp = time;
-        rt_marker_pub_->msg_.points.clear();
-        geometry_msgs::msg::Point p;
-        p.x = predict_x;
-        p.y = predict_y;
-        p.z = predict_z;
-        rt_marker_pub_->msg_.points.emplace_back(p);
-        rt_marker_pub_->unlockAndPublish();
-      }
-    }
-
     double distance = std::sqrt(std::pow(predict_x, 2) + std::pow(predict_y, 2));
     pitch_position_command_ = -std::atan2(predict_z, distance);
+    pitch_velocity_command_ = 0.0;
 
     yaw_position_command_ = std::atan2(predict_y, predict_x);
+    yaw_velocity_command_ = 0.0;
+
+  } else if (joint_commands && *joint_commands) {
+    // Target not found
+    pitch_velocity_command_ = joint_commands->get()->y;
+    pitch_position_command_ += pitch_velocity_command_ * period.seconds();
+
+    yaw_velocity_command_ = joint_commands->get()->z;
+    yaw_position_command_ += yaw_velocity_command_ * period.seconds();
+  } else {
+    // No target and no command
+    return controller_interface::return_type::OK;
   }
 
   // limit pitch position command

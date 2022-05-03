@@ -29,7 +29,7 @@ public:
   ReceivePacket readData();
 
   void writeCommand(
-    const double & pitch_command, const double & yaw_command, const bool & shoot_cmd);
+    const double & pitch_command, const double & yaw_command, const bool & shoot_command);
 
 private:
   void resolveParams(const std::unordered_map<std::string, std::string> & params);
