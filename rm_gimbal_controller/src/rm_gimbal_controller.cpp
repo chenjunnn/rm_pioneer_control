@@ -69,7 +69,7 @@ CallbackReturn RMGimbalController::on_init()
 
     // Initialize the motor position publisher
     motor_position_pub_ = node_->create_publisher<geometry_msgs::msg::Vector3>(
-      "/motor_position", rclcpp::SensorDataQoS());
+      "/motor_position", rclcpp::SystemDefaultsQoS());
     rt_mp_pub_ = std::make_shared<RealtimePositionPublisher>(motor_position_pub_);
 
     // Initialize joint limits
