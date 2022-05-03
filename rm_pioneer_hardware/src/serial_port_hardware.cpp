@@ -187,7 +187,8 @@ hardware_interface::return_type SerialPortHardware::write()
 {
   double pitch_command = hw_joint_coefficients_[0] * hw_joint_commands_[0];
   double yaw_command = hw_joint_coefficients_[1] * hw_joint_commands_[1];
-  serial_driver_->writeCommand(pitch_command, yaw_command);
+  bool shoot_command = hw_joint_commands_[2];
+  serial_driver_->writeCommand(pitch_command, yaw_command, shoot_command);
 
   return hardware_interface::return_type::OK;
 }

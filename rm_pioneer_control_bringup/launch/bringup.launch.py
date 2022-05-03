@@ -1,11 +1,11 @@
 # Copyright (c) 2022 ChenJun
 # Licensed under the MIT License.
 
+import os
+
+from ament_index_python import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
-from launch.conditions import IfCondition
-from launch.event_handlers import OnProcessExit
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, PathJoinSubstitution
 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -15,16 +15,9 @@ def generate_launch_description():
     # Declare arguments
     declared_arguments = []
 
-    # Get URDF via xacro
-    robot_description_content = Command(
-        [
-            'xacro ',
-            PathJoinSubstitution(
-                [FindPackageShare("rm_pioneer_description"), "urdf", "guard.urdf.xacro"]
-            )
-        ]
-    )
-    robot_description = {"robot_description": robot_description_content}
+    # robot_description
+    robot_description = Command(['xacro ', os.path.join(
+        get_package_share_directory('rm_pioneer_description'), 'urdf', 'gimbal.urdf.xacro')])
 
     robot_controllers = PathJoinSubstitution(
         [
@@ -37,17 +30,10 @@ def generate_launch_description():
     control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
-        parameters=[robot_description, robot_controllers],
+        parameters=[{"robot_description": robot_description}, robot_controllers],
         remappings=[("/rm_gimbal_controller/commands", "/joy"),
                     ("/rm_gimbal_controller/target", "/processor/target"), ],
         output="screen",
-    )
-
-    robot_state_pub_node = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        parameters=[{'robot_description': robot_description_content,
-                     'publish_frequency': 1000.0}]
     )
 
     gimbal_controller_spawner = Node(
@@ -58,7 +44,6 @@ def generate_launch_description():
 
     nodes = [
         control_node,
-        robot_state_pub_node,
         gimbal_controller_spawner,
     ]
 

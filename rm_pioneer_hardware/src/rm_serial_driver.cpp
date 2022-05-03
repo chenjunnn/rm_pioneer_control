@@ -35,7 +35,7 @@ RMSerialDriver::RMSerialDriver(const std::unordered_map<std::string, std::string
     }
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(logger_, "Error creating serial port: %s - %s", device_name_.c_str(), ex.what());
-    throw ex;
+    reopenPort();
   }
 }
 
@@ -60,7 +60,7 @@ void RMSerialDriver::sendRequest()
     serial_driver_->port()->send(data);
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(logger_, "Error sending data: %s - %s", device_name_.c_str(), ex.what());
-    throw ex;
+    reopenPort();
   }
 }
 
@@ -87,26 +87,28 @@ ReceivePacket RMSerialDriver::readData()
     }
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(logger_, "Error while receiving data: %s", ex.what());
-    throw ex;
+    reopenPort();
   }
 
   return ReceivePacket();
 }
 
-void RMSerialDriver::writeCommand(const double & pitch_command, const double & yaw_command)
+void RMSerialDriver::writeCommand(
+  const double & pitch_command, const double & yaw_command, const bool & shoot_command)
 {
   try {
     SendPacket packet;
     packet.is_request = false;
     packet.pitch_command = static_cast<int16_t>(pitch_command);
     packet.yaw_command = static_cast<int16_t>(yaw_command);
+    packet.shoot_cmd = shoot_command;
     crc16::appendCRC16CheckSum(reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
 
     std::vector<uint8_t> data = toVector(packet);
     serial_driver_->port()->send(data);
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(logger_, "Error while writing data: %s", ex.what());
-    throw ex;
+    reopenPort();
   }
 }
 
@@ -161,6 +163,24 @@ void RMSerialDriver::resolveParams(const std::unordered_map<std::string, std::st
 
   device_config_ =
     std::make_unique<drivers::serial_driver::SerialPortConfig>(baud_rate, fc, pt, sb);
+}
+
+void RMSerialDriver::reopenPort()
+{
+  RCLCPP_WARN(logger_, "Attempting to reopen port");
+  try {
+    if (serial_driver_->port()->is_open()) {
+      serial_driver_->port()->close();
+    }
+    serial_driver_->port()->open();
+    RCLCPP_INFO(logger_, "Successfully reopened port");
+  } catch (const std::exception & ex) {
+    RCLCPP_ERROR(logger_, "Error while reopening port: %s", ex.what());
+    if (rclcpp::ok()) {
+      rclcpp::sleep_for(std::chrono::seconds(1));
+      reopenPort();
+    }
+  }
 }
 
 }  // namespace rm_pioneer_hardware

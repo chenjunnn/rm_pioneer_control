@@ -26,7 +26,7 @@ namespace rm_gimbal_controller
 {
 RMGimbalController::RMGimbalController() : forward_command_controller::ForwardCommandController()
 {
-  joint_names_ = {"pitch_joint", "yaw_joint"};
+  joint_names_ = {"pitch_joint", "yaw_joint", "shooter"};
   interface_name_ = hardware_interface::HW_IF_EFFORT;
 
   pitch_position_command_ = 0;
@@ -200,8 +200,11 @@ controller_interface::return_type RMGimbalController::update(
   pitch_velocity_command_ = 0.0;
   yaw_velocity_command_ = 0.0;
 
-  // left trigger has not been pressed
+  // Target found
+  bool target_found = false;
   if (target_msg && *target_msg && target_msg->get()->target_found) {
+    target_found = true;
+
     double latency = (time - target_msg->get()->header.stamp).seconds();
     double origin_x = target_msg->get()->position.x;
     double origin_y = target_msg->get()->position.y;
@@ -256,6 +259,7 @@ controller_interface::return_type RMGimbalController::update(
   // set output
   command_interfaces_[0].set_value(pitch_output);
   command_interfaces_[1].set_value(yaw_output);
+  command_interfaces_[2].set_value(target_found);
 
   return controller_interface::return_type::OK;
 }

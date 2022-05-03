@@ -19,6 +19,8 @@ struct ReceivePacket
   float linear_acceleration_x = 0.f;
   float linear_acceleration_y = 0.f;
   float linear_acceleration_z = 0.f;
+  float motor_pitch = 0.f;
+  float motor_yaw = 0.f;
   uint16_t checksum = 0;
 } __attribute__((packed));
 
@@ -26,6 +28,7 @@ struct SendPacket
 {
   uint8_t header = 0xA5;
   bool is_request = false;
+  bool shoot_cmd = false;
   int16_t pitch_command = 0;
   int16_t yaw_command = 0;
   uint16_t checksum = 0;
